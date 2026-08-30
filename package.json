@@ -1,0 +1,23 @@
+{
+  "name": "file-manager-multi-source",
+  "version": "1.0.0",
+  "description": "Web quản lý file tập trung từ Telegram, Google Drive, Terabox",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "start:prod": "NODE_ENV=production node server.js",
+    "start:3001": "node -e \"process.env.PORT=3001; require('./server.js')\"",
+    "kill": "node -e \"require('child_process').exec('netstat -ano | findstr :3000', (e,o)=>{o&&o.split('\\n').forEach(l=>{const p=l.trim().split(/\\s+/).pop(); p&&require('child_process').exec('taskkill /F /PID '+p)}); console.log('done')})\"",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop filehub",
+    "pm2:logs": "pm2 logs filehub"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}

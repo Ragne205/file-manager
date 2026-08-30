@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FileHub - Quản lý file đa nguồn</title>
+<link rel="stylesheet" href="style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script>
+// Guard: nếu chưa đăng nhập thì chuyển sang login.html (kiểm tra cả cookie qua /api/me và localStorage)
+(async ()=>{
+  try{
+    const r = await fetch('/api/me', { credentials:'include' });
+    if(!r.ok) throw new Error();
+    const d = await r.json();
+    if(!d.authenticated) throw new Error();
+  }catch{
+    // fallback check localStorage token còn hạn
+    const t = localStorage.getItem('fh_token');
+    if(!t){
+      location.href = '/login.html';
+    } else {
+      // thử verify token qua header
+      try{
+        const r2 = await fetch('/api/me', { headers:{ 'Authorization':'Bearer '+t }, credentials:'include' });
+        if(!r2.ok) { localStorage.removeItem('fh_token'); location.href='/login.html'; }
+      }catch{ location.href='/login.html'; }
+    }
+  }
+})();
+</script>
+</head>
+<body>
+  <!-- 1 HEADER - full width (đã bỏ nút +Thêm file ở header, chỉ giữ 1 nút ở khung trong) -->
+  <header class="header">
+    <div style="display:flex;gap:12px;align-items:center">
+      <button id="btn-toggle-sidebar" class="btn ghost small" title="Thu/mở menu" style="width:38px;height:38px;padding:0;display:grid;place-items:center;font-size:18px">☰</button>
+      <div class="logo">
+        <div class="logo-icon">📦</div>
+        <div>
+          <h1>FileHub</h1>
+          <span>Quản lý đa nguồn</span>
+        </div>
+      </div>
+    </div>
+    <div class="user-menu" id="user-menu">
+      <button class="user-trigger" id="btn-user-menu" title="Tài khoản">
+        <span class="avatar">👤</span>
+        <span id="header-user-name">admin</span>
+        <span class="arrow" id="user-arrow">▾</span>
+      </button>
+      <div class="user-dropdown hidden" id="user-dropdown">
+        <button class="dropdown-item" id="btn-go-account">👤 Tài khoản</button>
+        <button class="dropdown-item danger" id="btn-dropdown-logout">⎋ Đăng xuất</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="app">
+    <!-- 1 KHUNG TRÁI - thu mở -->
+    <aside class="sidebar" id="sidebar">
+      <nav class="nav">
+        <button class="nav-item active" data-filter="all">
+          <span>📁</span> Tất cả <em id="count-all">0</em>
+        </button>
+        <button class="nav-item" data-filter="telegram">
+          <span class="dot telegram"></span> Telegram <em id="count-telegram">0</em>
+        </button>
+        <button class="nav-item" data-filter="google-drive">
+          <span class="dot gdrive"></span> Google Drive <em id="count-gdrive">0</em>
+        </button>
+        <button class="nav-item" data-filter="terabox">
+          <span class="dot terabox"></span> Terabox <em id="count-terabox">0</em>
+        </button>
+      </nav>
+
+      <!-- Filter theo loại file: pdf, fla, png... -->
+      <div class="filter-section">
+        <h3 class="filter-title">Loại file</h3>
+        <div class="type-filters" id="type-filters">
+          <!-- JS sẽ render các nút pdf, fla, png ... -->
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <button id="btn-clear" class="btn ghost small danger">🗑 Xóa tất cả</button>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main" id="main">
+      <!-- 2 THANH TÌM KIẾM - sẽ ở giữa khi không có gì, lên trên khi có -->
+      <div id="search-container" class="search-container hero">
+        <div class="hero-title">
+          <h2>Quản lý file tập trung</h2>
+          <p>Tìm kiếm file từ Telegram, Google Drive, Terabox</p>
+        </div>
+        <div class="search-bar">
+          <div class="search-wrap">
+            <span class="search-icon">🔍</span>
+            <input id="search" type="text" placeholder="Tìm theo tên, tag, link... (vd: animate, 4K)">
+            <select id="ext-filter" title="Lọc loại file">
+              <option value="all">Tất cả loại</option>
+            </select>
+            <select id="sort" title="Sắp xếp">
+              <option value="newest">Mới nhất</option>
+              <option value="oldest">Cũ nhất</option>
+              <option value="name-asc">Tên A → Z</option>
+              <option value="name-desc">Tên Z → A</option>
+              <option value="source">Theo nguồn</option>
+            </select>
+          </div>
+          <div class="top-actions">
+            <div class="view-toggle">
+              <button id="view-grid" class="active" title="Lưới">⊞</button>
+              <button id="view-list" title="Danh sách">☰</button>
+            </div>
+            <button id="btn-add" class="btn primary">＋ Thêm file</button>
+          </div>
+        </div>
+      </div>
+
+      <section class="chips" id="chips">
+        <span class="chip-info" id="result-info">Đang tải...</span>
+      </section>
+
+      <section id="file-grid" class="grid"></section>
+
+      <div id="empty" class="empty hidden">
+        <div class="empty-icon">📭</div>
+        <h3>Chưa có file nào</h3>
+        <p>Nhấn "Thêm file" để bắt đầu quản lý link từ Telegram, Drive, Terabox.</p>
+        <p class="empty-hint">Demo (ô số 4) đang được giữ để xem mẫu — khi lên chính thức sẽ tự ẩn/bỏ.</p>
+      </div>
+    </main>
+  </div>
+
+<!-- Modal -->
+<div id="modal" class="modal hidden">
+  <div class="modal-backdrop" id="modal-backdrop"></div>
+  <div class="modal-card">
+    <div class="modal-head">
+      <h2 id="modal-title">Thêm file mới</h2>
+      <button id="modal-close" class="icon-btn">✕</button>
+    </div>
+    <form id="form-add">
+      <input type="hidden" id="f-id">
+      <div class="field">
+        <div class="label-row"><span>Tên file / mô tả</span><span class="req">*</span></div>
+        <input id="f-name" required placeholder="VD: Video hướng dẫn AE - Part 1.mp4">
+      </div>
+      <div class="row">
+        <div class="field">
+          <div class="label-row"><span>Nguồn</span><span class="req">*</span></div>
+          <select id="f-source" required>
+            <option value="telegram">Telegram</option>
+            <option value="google-drive">Google Drive</option>
+            <option value="terabox">Terabox</option>
+            <option value="other">Khác</option>
+          </select>
+        </div>
+        <div class="field">
+          <div class="label-row"><span>Loại file</span></div>
+          <select id="f-type">
+            <option value="video">Video</option>
+            <option value="archive">Zip / Rar</option>
+            <option value="document">Tài liệu</option>
+            <option value="image">Hình ảnh</option>
+            <option value="folder">Folder</option>
+            <option value="other">Khác</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <div class="label-row"><span>Link truy cập</span><span class="req">*</span></div>
+        <input id="f-link" required type="url" placeholder="https://t.me/... hoặc https://drive.google.com/...">
+      </div>
+      <div class="row">
+        <div class="field">
+          <div class="label-row"><span>Dung lượng</span></div>
+          <input id="f-size" placeholder="VD: 1.2 GB, 800 MB">
+        </div>
+        <div class="field">
+          <div class="label-row"><span>Ngày lưu</span></div>
+          <input id="f-date" type="date">
+        </div>
+      </div>
+      <div class="field">
+        <div class="label-row"><span>Tags (cách nhau dấu phẩy)</span></div>
+        <input id="f-tags" placeholder="animate, tutorial, 4k">
+      </div>
+      <div class="modal-actions">
+        <button type="button" id="btn-cancel" class="btn ghost">Hủy</button>
+        <button type="submit" class="btn primary">Lưu file</button>
+      </div>
+      <p class="form-hint">Backend API: <code>POST /api/files</code> — có thể thay bằng API thật của Telegram Bot / Drive API / Terabox API sau này.</p>
+    </form>
+  </div>
+</div>
+
+<!-- Account Info Modal - cửa sổ riêng -->
+<div id="account-modal" class="modal hidden">
+  <div class="modal-backdrop" id="account-backdrop"></div>
+  <div class="modal-card" style="width:min(420px,92vw)">
+    <div class="modal-head">
+      <h2>Thông tin tài khoản</h2>
+      <button id="account-close" class="icon-btn">✕</button>
+    </div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
+      <div class="field">
+        <div class="label-row"><span>Tên tài khoản</span></div>
+        <input id="account-username" readonly style="background:var(--card);opacity:.9">
+      </div>
+      <div class="field">
+        <div class="label-row"><span>Vai trò</span></div>
+        <input value="Quản trị viên" readonly style="background:var(--card);opacity:.9">
+      </div>
+      <div class="field">
+        <div class="label-row"><span>Đổi mật khẩu</span></div>
+        <input id="account-new-pass" type="password" placeholder="Mật khẩu mới (tối thiểu 3 ký tự)">
+        <input id="account-new-pass2" type="password" placeholder="Nhập lại mật khẩu mới" style="margin-top:8px">
+        <button id="btn-change-pass" class="btn primary" style="margin-top:8px;width:100%">Đổi mật khẩu</button>
+      </div>
+      <p class="form-hint">Đổi mật khẩu sẽ đăng xuất các phiên khác và lưu vào <code>users.json</code>.</p>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

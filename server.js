@@ -1,0 +1,303 @@
+const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const cors = require('cors');
+
+const app = express();
+const PORT = parseInt(process.env.PORT, 10) || 3000;
+const DB_PATH = path.join(__dirname, 'db.json');
+const crypto = require('crypto');
+
+// --- AUTH CONFIG ---
+const USERS_PATH = path.join(__dirname, 'users.json');
+const ADMIN_USER = process.env.ADMIN_USER || 'admin';
+const ADMIN_PASS = process.env.ADMIN_PASS || 'admin123';
+const sessions = new Map(); // token -> { user, created }
+
+function readUsers(){
+  try{
+    if(!fs.existsSync(USERS_PATH)){
+      const init = [{ username: ADMIN_USER, password: ADMIN_PASS }];
+      fs.writeFileSync(USERS_PATH, JSON.stringify(init, null, 2));
+      return init;
+    }
+    return JSON.parse(fs.readFileSync(USERS_PATH,'utf-8'));
+  }catch(e){
+    console.error('readUsers error', e);
+    return [{ username: ADMIN_USER, password: ADMIN_PASS }];
+  }
+}
+function writeUsers(users){
+  fs.writeFileSync(USERS_PATH, JSON.stringify(users, null, 2));
+}
+function findUser(username){
+  const users = readUsers();
+  return users.find(u=> u.username === username);
+}
+
+function parseCookies(req){
+  const h = req.headers.cookie || '';
+  const out = {};
+  h.split(';').forEach(p=>{
+    const [k,...v] = p.trim().split('=');
+    if(k) out[k.trim()] = decodeURIComponent(v.join('='));
+  });
+  return out;
+}
+function getToken(req){
+  const c = parseCookies(req);
+  if(c.token && sessions.has(c.token)) return c.token;
+  const auth = req.headers.authorization || '';
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  if(m && sessions.has(m[1])) return m[1];
+  return null;
+}
+function requireAuth(req,res,next){
+  const tok = getToken(req);
+  if(!tok) return res.status(401).json({ error: 'Chưa đăng nhập' });
+  req.user = sessions.get(tok).user;
+  next();
+}
+
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// --- DB helpers ---
+function readDB() {
+  try {
+    if (!fs.existsSync(DB_PATH)) {
+      const initial = getInitialData();
+      fs.writeFileSync(DB_PATH, JSON.stringify(initial, null, 2));
+      return initial;
+    }
+    return JSON.parse(fs.readFileSync(DB_PATH, 'utf-8'));
+  } catch (e) {
+    console.error('DB read error', e);
+    return getInitialData();
+  }
+}
+function writeDB(data) {
+  fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+}
+function getInitialData() {
+  return [
+    {
+      id: "1",
+      name: "Video huong dan AE 2024.mp4",
+      source: "telegram",
+      size: "1.2 GB",
+      sizeBytes: 1288490188,
+      link: "https://t.me/c/123456/789",
+      date: "2026-08-28",
+      type: "video",
+      tags: ["after-effects", "tutorial"]
+    },
+    {
+      id: "2",
+      name: "Project Animate - Nhan vat.zip",
+      source: "google-drive",
+      size: "856 MB",
+      sizeBytes: 897581056,
+      link: "https://drive.google.com/file/d/1abcXYZ/view",
+      date: "2026-08-25",
+      type: "archive",
+      tags: ["animate", "character"]
+    },
+    {
+      id: "3",
+      name: "Bo stock footage 4K.rar",
+      source: "terabox",
+      size: "4.5 GB",
+      sizeBytes: 4831838208,
+      link: "https://1024terabox.com/s/1xyz123",
+      date: "2026-08-20",
+      type: "archive",
+      tags: ["stock", "4k"]
+    },
+    {
+      id: "4",
+      name: "Tai lieu API Telegram Bot.pdf",
+      source: "telegram",
+      size: "3.2 MB",
+      sizeBytes: 3355443,
+      link: "https://t.me/c/123456/790",
+      date: "2026-08-29",
+      type: "document",
+      tags: ["telegram", "api"]
+    },
+    {
+      id: "5",
+      name: "Backup Drive thang 8",
+      source: "google-drive",
+      size: "12 GB",
+      sizeBytes: 12884901888,
+      link: "https://drive.google.com/drive/folders/1folderABC",
+      date: "2026-08-15",
+      type: "folder",
+      tags: ["backup"]
+    }
+  ];
+}
+
+// --- AUTH API ---
+app.post('/api/register', (req, res) => {
+  const { username, password } = req.body;
+  if(!username || !password) return res.status(400).json({ error: 'Thiếu tài khoản hoặc mật khẩu' });
+  if(username.length < 3) return res.status(400).json({ error: 'Tài khoản tối thiểu 3 ký tự' });
+  if(password.length < 3) return res.status(400).json({ error: 'Mật khẩu tối thiểu 3 ký tự' });
+  const users = readUsers();
+  if(users.find(u=> u.username === username)){
+    return res.status(400).json({ error: 'Tài khoản đã tồn tại' });
+  }
+  users.push({ username: username.trim(), password });
+  writeUsers(users);
+  return res.json({ success: true, message: 'Tạo tài khoản thành công' });
+});
+
+app.post('/api/forgot', (req, res) => {
+  const { username, newPassword } = req.body;
+  if(!username || !newPassword) return res.status(400).json({ error: 'Thiếu thông tin' });
+  if(newPassword.length < 3) return res.status(400).json({ error: 'Mật khẩu mới tối thiểu 3 ký tự' });
+  const users = readUsers();
+  const u = users.find(x=> x.username === username);
+  if(!u) return res.status(404).json({ error: 'Tài khoản không tồn tại' });
+  u.password = newPassword;
+  writeUsers(users);
+  // xóa session cũ của user này
+  for(const [tok, sess] of sessions) if(sess.user === username) sessions.delete(tok);
+  return res.json({ success: true, message: 'Đặt lại mật khẩu thành công' });
+});
+
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  const user = findUser(username);
+  // tương thích với ADMIN_USER env nếu chưa có trong file
+  const valid = user ? (user.password === password) : (username === ADMIN_USER && password === ADMIN_PASS);
+  if(valid){
+    // nếu user env chưa lưu thì lưu vào file
+    if(!user && username === ADMIN_USER){
+      const users = readUsers();
+      if(!users.find(u=> u.username===username)) { users.push({ username, password }); writeUsers(users); }
+    }
+    const token = crypto.randomBytes(24).toString('hex');
+    sessions.set(token, { user: username, created: Date.now() });
+    res.setHeader('Set-Cookie', `token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7*24*3600}`);
+    return res.json({ success: true, token, user: username });
+  }
+  return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' });
+});
+
+app.post('/api/logout', (req, res) => {
+  const tok = getToken(req);
+  if(tok) sessions.delete(tok);
+  res.setHeader('Set-Cookie', 'token=; Path=/; Max-Age=0');
+  res.json({ success: true });
+});
+
+app.get('/api/me', (req, res) => {
+  const tok = getToken(req);
+  if(!tok) return res.status(401).json({ authenticated: false });
+  res.json({ authenticated: true, user: sessions.get(tok).user });
+});
+
+// Bảo vệ API files - bỏ comment dòng dưới nếu muốn bắt buộc đăng nhập mới xem được file
+// Hiện tại để mở, chỉ cần login để vào web; API vẫn cho qua nếu chưa login để tránh lỗi khi test
+// Nếu muốn khóa API, đổi thành app.use('/api/files', requireAuth);
+const protectFiles = false; // đổi true để bắt buộc login mới gọi được /api/files
+
+// --- API FILES ---
+app.get('/api/files', (req, res) => {
+  if(protectFiles && !getToken(req)) return res.status(401).json({ error: 'Chưa đăng nhập' });
+  const files = readDB();
+  res.json(files);
+});
+
+app.post('/api/files', (req, res) => {
+  if(protectFiles && !getToken(req)) return res.status(401).json({ error: 'Chưa đăng nhập' });
+  const files = readDB();
+  const { name, source, link, size, type, tags } = req.body;
+  if (!name || !source || !link) {
+    return res.status(400).json({ error: 'Thiếu name, source hoặc link' });
+  }
+  const newFile = {
+    id: Date.now().toString(),
+    name: name.trim(),
+    source,
+    link: link.trim(),
+    size: size || "Không rõ",
+    sizeBytes: 0,
+    date: new Date().toISOString().slice(0, 10),
+    type: type || "other",
+    tags: tags ? (Array.isArray(tags) ? tags : tags.split(',').map(s=>s.trim()).filter(Boolean)) : []
+  };
+  files.unshift(newFile);
+  writeDB(files);
+  res.status(201).json(newFile);
+});
+
+app.put('/api/files/:id', (req, res) => {
+  if(protectFiles && !getToken(req)) return res.status(401).json({ error: 'Chưa đăng nhập' });
+  let files = readDB();
+  const idx = files.findIndex(f => f.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Không tìm thấy file' });
+  files[idx] = { ...files[idx], ...req.body, id: files[idx].id };
+  // normalize tags if string
+  if (typeof files[idx].tags === 'string') {
+    files[idx].tags = files[idx].tags.split(',').map(s=>s.trim()).filter(Boolean);
+  }
+  writeDB(files);
+  res.json(files[idx]);
+});
+
+app.delete('/api/files/:id', (req, res) => {
+  if(protectFiles && !getToken(req)) return res.status(401).json({ error: 'Chưa đăng nhập' });
+  let files = readDB();
+  const before = files.length;
+  files = files.filter(f => f.id !== req.params.id);
+  if (files.length === before) return res.status(404).json({ error: 'Không tìm thấy' });
+  writeDB(files);
+  res.json({ success: true });
+});
+
+app.get('/api/stats', (req, res) => {
+  const files = readDB();
+  const stats = {
+    total: files.length,
+    bySource: {
+      telegram: files.filter(f => f.source === 'telegram').length,
+      'google-drive': files.filter(f => f.source === 'google-drive').length,
+      terabox: files.filter(f => f.source === 'terabox').length,
+    },
+    byType: {}
+  };
+  files.forEach(f => {
+    stats.byType[f.type] = (stats.byType[f.type] || 0) + 1;
+  });
+  res.json(stats);
+});
+
+// SPA fallback (không chặn /api và /login.html)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+module.exports = app;
+
+// Chỉ listen khi chạy trực tiếp (không phải import từ Vercel/serverless)
+if (require.main === module) {
+  const server = app.listen(PORT, () => {
+    console.log(`✅ File Manager đang chạy tại http://localhost:${PORT} [${process.env.NODE_ENV||'development'}]`);
+  });
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      const nextPort = PORT + 1;
+      console.warn(`⚠️  Cổng ${PORT} đang bận (EADDRINUSE). Tự động thử cổng ${nextPort}...`);
+      console.warn(`   Cách fix thủ công: chạy 'npx kill-port ${PORT}' hoặc 'set PORT=3001 && npm start'`);
+      server.listen(nextPort);
+    } else {
+      console.error('Server error:', err);
+    }
+  });
+}
