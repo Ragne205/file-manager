@@ -64,6 +64,15 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// --- Helper: format bytes ---
+function formatBytes(bytes){
+  if(!bytes || isNaN(bytes) || bytes<=0) return 'Không rõ';
+  const u=['B','KB','MB','GB','TB'];
+  let i=0; let n=Number(bytes);
+  while(n>=1024 && i<u.length-1){ n/=1024; i++; }
+  return (i===0? n : n.toFixed(n>=10?1:2)) + ' ' + u[i];
+}
+
 // --- DB helpers ---
 function readDB() {
   try {
@@ -200,6 +209,53 @@ app.get('/api/me', (req, res) => {
   const tok = getToken(req);
   if(!tok) return res.status(401).json({ authenticated: false });
   res.json({ authenticated: true, user: sessions.get(tok).user });
+});
+
+// --- API: tự check dung lượng từ link ---
+app.get('/api/check-size', async (req, res) => {
+  const url = (req.query.url||'').trim();
+  if(!url) return res.status(400).json({ error: 'Thiếu url' });
+  try{ new URL(url); }catch{ return res.status(400).json({ error: 'URL không hợp lệ' }); }
+  // whitelist sơ bộ để tránh SSRF nội bộ
+  if(url.startsWith('http://127.')||url.startsWith('http://localhost')||url.includes('169.254.')) return res.status(400).json({ error: 'URL không được phép' });
+
+  // thử biến thể Google Drive: /file/d/<id>/view -> uc?export=download&id=<id>
+  let candidates = [url];
+  const mDrive = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if(mDrive) candidates.unshift(`https://drive.google.com/uc?export=download&id=${mDrive[1]}`);
+  const mDrive2 = url.match(/drive\.google\.com\/.*[?&]id=([a-zA-Z0-9_-]+)/);
+  if(mDrive2 && !mDrive) candidates.unshift(`https://drive.google.com/uc?export=download&id=${mDrive2[1]}`);
+
+  let sizeBytes = null;
+  let contentType = null;
+  for(const cand of candidates){
+    try{
+      const ctrl = new AbortController();
+      const t = setTimeout(()=> ctrl.abort(), 7000);
+      const head = await fetch(cand, { method:'HEAD', redirect:'follow', signal: ctrl.signal, headers:{ 'User-Agent':'FileHub/1.0' } });
+      clearTimeout(t);
+      contentType = head.headers.get('content-type');
+      const cl = head.headers.get('content-length');
+      if(cl){ const n=parseInt(cl,10); if(!isNaN(n) && n>0) { sizeBytes=n; break; } }
+      // nếu không có content-length thử content-range qua GET range
+      if(!sizeBytes){
+        const ctrl2 = new AbortController();
+        const t2 = setTimeout(()=> ctrl2.abort(), 7000);
+        const get = await fetch(cand, { method:'GET', redirect:'follow', signal: ctrl2.signal, headers:{ 'User-Agent':'FileHub/1.0', 'Range':'bytes=0-0' } });
+        clearTimeout(t2);
+        contentType = contentType || get.headers.get('content-type');
+        const cr = get.headers.get('content-range');
+        if(cr){ const mm = cr.match(/\/(\d+)$/); if(mm){ const n=parseInt(mm[1],10); if(!isNaN(n)&&n>0){ sizeBytes=n; break; } } }
+        const cl2 = get.headers.get('content-length');
+        if(cl2){ const n=parseInt(cl2,10); if(!isNaN(n)&&n>0){ sizeBytes=n; break; } }
+      }
+    }catch(e){ /* thử candidate tiếp */ }
+  }
+
+  if(!sizeBytes){
+    return res.json({ size: null, sizeBytes: 0, sizeFormatted: 'Không rõ', contentType: contentType || null, checked: true });
+  }
+  return res.json({ sizeBytes, size: formatBytes(sizeBytes), sizeFormatted: formatBytes(sizeBytes), contentType, checked: true });
 });
 
 // Bảo vệ API files - bỏ comment dòng dưới nếu muốn bắt buộc đăng nhập mới xem được file

@@ -338,6 +338,62 @@ function openModal(data=null){
 }
 function closeModal(){ els.modal.classList.add('hidden'); }
 
+// --- Tự check dung lượng khi dán link ---
+(function(){
+  const fLink = document.getElementById('f-link');
+  const fSize = document.getElementById('f-size');
+  const fStatus = document.getElementById('f-size-status');
+  if(!fLink || !fSize) return;
+  let timer = null;
+  let lastChecked = '';
+  async function doCheck(url){
+    if(!url || !url.startsWith('http') || url === lastChecked) return;
+    lastChecked = url;
+    if(fStatus) fStatus.textContent = '⏳ Đang kiểm tra...';
+    fSize.placeholder = 'Đang kiểm tra dung lượng...';
+    try{
+      const r = await fetch(`/api/check-size?url=${encodeURIComponent(url)}`, { credentials:'include', headers: authHeaders() });
+      const d = await r.json();
+      if(!r.ok) throw new Error(d.error||'Lỗi');
+      if(d.sizeFormatted && d.sizeFormatted !== 'Không rõ'){
+        fSize.value = d.sizeFormatted;
+        if(fStatus) fStatus.textContent = '✓ Tự điền: ' + d.sizeFormatted;
+        // nếu tên file trống thì thử đoán từ URL
+        const nameInput = document.getElementById('f-name');
+        if(nameInput && !nameInput.value.trim()){
+          try{
+            const u = new URL(url);
+            const part = u.pathname.split('/').pop();
+            if(part && part.includes('.')) nameInput.value = decodeURIComponent(part);
+          }catch{}
+        }
+      } else {
+        if(fStatus) fStatus.textContent = 'Không đo được — nhập tay';
+        fSize.placeholder = 'VD: 1.2 GB, 800 MB — không đo được';
+      }
+    }catch(e){
+      if(fStatus) fStatus.textContent = 'Không check được';
+      console.warn('check-size fail', e);
+    }
+  }
+  fLink.addEventListener('input', ()=>{
+    const v = fLink.value.trim();
+    clearTimeout(timer);
+    if(v.length < 8 || !v.startsWith('http')) { if(fStatus) fStatus.textContent=''; return; }
+    timer = setTimeout(()=> doCheck(v), 800);
+  });
+  fLink.addEventListener('blur', ()=>{
+    const v = fLink.value.trim();
+    if(v) doCheck(v);
+  });
+  fLink.addEventListener('paste', ()=>{
+    setTimeout(()=>{
+      const v = fLink.value.trim();
+      if(v) doCheck(v);
+    }, 100);
+  });
+})();
+
 const btnAdd = document.getElementById('btn-add');
 if(btnAdd) btnAdd.addEventListener('click', ()=> openModal());
 const btnAddHeader = document.getElementById('btn-add-header');
