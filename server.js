@@ -17,14 +17,21 @@ const sessions = new Map(); // token -> { user, created }
 function readUsers(){
   try{
     if(!fs.existsSync(USERS_PATH)){
-      const init = [{ username: ADMIN_USER, password: ADMIN_PASS }];
+      const init = [{ username: ADMIN_USER, email: `${ADMIN_USER}@example.com`, password: ADMIN_PASS }];
       fs.writeFileSync(USERS_PATH, JSON.stringify(init, null, 2));
       return init;
     }
-    return JSON.parse(fs.readFileSync(USERS_PATH,'utf-8'));
+    const data = JSON.parse(fs.readFileSync(USERS_PATH,'utf-8'));
+    // migrate: thêm email nếu thiếu
+    let changed=false;
+    data.forEach(u=>{
+      if(!u.email){ u.email = `${u.username}@example.com`; changed=true; }
+    });
+    if(changed) fs.writeFileSync(USERS_PATH, JSON.stringify(data, null, 2));
+    return data;
   }catch(e){
     console.error('readUsers error', e);
-    return [{ username: ADMIN_USER, password: ADMIN_PASS }];
+    return [{ username: ADMIN_USER, email: `${ADMIN_USER}@example.com`, password: ADMIN_PASS }];
   }
 }
 function writeUsers(users){
@@ -34,6 +41,33 @@ function findUser(username){
   const users = readUsers();
   return users.find(u=> u.username === username);
 }
+function findUserByIdentifier(identifier){
+  const users = readUsers();
+  const low = identifier.toLowerCase();
+  return users.find(u=> u.username.toLowerCase()===low || (u.email && u.email.toLowerCase()===low));
+}
+function isValidEmail(email){
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+// OTP store: key -> { otp, expires, data }
+const otpStore = new Map();
+function generateOTP(){ return Math.floor(100000 + Math.random()*900000).toString(); }
+function setOTP(key, data){
+  const otp = generateOTP();
+  otpStore.set(key, { otp, data, expires: Date.now() + 5*60*1000 });
+  console.log(`[OTP] ${key} -> ${otp} (demo, sẽ trả về client)`);
+  return otp;
+}
+function verifyOTP(key, otp){
+  const rec = otpStore.get(key);
+  if(!rec) return { ok:false, error:'Chưa gửi OTP hoặc OTP hết hạn, hãy bấm Gửi OTP lại' };
+  if(Date.now() > rec.expires){ otpStore.delete(key); return { ok:false, error:'OTP đã hết hạn (5 phút), hãy gửi lại' }; }
+  if(rec.otp !== String(otp).trim()) return { ok:false, error:'OTP không đúng' };
+  otpStore.delete(key);
+  return { ok:true, data: rec.data };
+}
+// dọn rác mỗi 5 phút
+setInterval(()=>{ for(const [k,v] of otpStore) if(Date.now()>v.expires) otpStore.delete(k); }, 5*60*1000);
 
 function parseCookies(req){
   const h = req.headers.cookie || '';
@@ -150,50 +184,111 @@ function getInitialData() {
   ];
 }
 
-// --- AUTH API ---
+// --- AUTH API (OTP) ---
+// Đăng ký: bước 1 gửi OTP về email
+app.post('/api/register/send-otp', (req, res) => {
+  const { username, email, password } = req.body;
+  if(!username || !email || !password) return res.status(400).json({ error: 'Thiếu username, email hoặc mật khẩu' });
+  if(username.length < 3) return res.status(400).json({ error: 'Tài khoản tối thiểu 3 ký tự' });
+  if(!isValidEmail(email)) return res.status(400).json({ error: 'Email không hợp lệ' });
+  if(password.length < 3) return res.status(400).json({ error: 'Mật khẩu tối thiểu 3 ký tự' });
+  const users = readUsers();
+  if(users.find(u=> u.username.toLowerCase()===username.toLowerCase())) return res.status(400).json({ error: 'Tài khoản đã tồn tại' });
+  if(users.find(u=> u.email && u.email.toLowerCase()===email.toLowerCase())) return res.status(400).json({ error: 'Email đã được dùng' });
+  const otp = setOTP(`register:${email.toLowerCase()}`, { username: username.trim(), email: email.trim().toLowerCase(), password });
+  // demo: trả luôn OTP để test (khi deploy thật sẽ gửi mail)
+  return res.json({ success: true, message: `OTP đã gửi đến ${email} (demo)`, otp, demoHint: `Demo: OTP là ${otp} - sẽ gửi qua email khi deploy thật` });
+});
+// Đăng ký: bước 2 xác thực OTP
+app.post('/api/register/verify', (req, res) => {
+  const { email, otp } = req.body;
+  if(!email || !otp) return res.status(400).json({ error: 'Thiếu email hoặc OTP' });
+  const v = verifyOTP(`register:${email.toLowerCase()}`, otp);
+  if(!v.ok) return res.status(400).json({ error: v.error });
+  const { username, password } = v.data;
+  const users = readUsers();
+  if(users.find(u=> u.username.toLowerCase()===username.toLowerCase())) return res.status(400).json({ error: 'Tài khoản đã tồn tại (vừa có người đăng ký)' });
+  users.push({ username, email: email.toLowerCase(), password });
+  writeUsers(users);
+  return res.json({ success: true, message: 'Tạo tài khoản thành công! Hãy đăng nhập' });
+});
+// Giữ endpoint cũ cho tương thích (không yêu cầu OTP) - nhưng khuyên dùng OTP
 app.post('/api/register', (req, res) => {
-  const { username, password } = req.body;
+  const { username, email, password } = req.body;
+  // nếu có email thì dùng luồng mới, nếu không thì cho qua cũ để tránh break
+  if(email){
+    if(!isValidEmail(email)) return res.status(400).json({ error: 'Email không hợp lệ' });
+  }
   if(!username || !password) return res.status(400).json({ error: 'Thiếu tài khoản hoặc mật khẩu' });
   if(username.length < 3) return res.status(400).json({ error: 'Tài khoản tối thiểu 3 ký tự' });
   if(password.length < 3) return res.status(400).json({ error: 'Mật khẩu tối thiểu 3 ký tự' });
   const users = readUsers();
-  if(users.find(u=> u.username === username)){
+  if(users.find(u=> u.username.toLowerCase()===username.toLowerCase())){
     return res.status(400).json({ error: 'Tài khoản đã tồn tại' });
   }
-  users.push({ username: username.trim(), password });
+  users.push({ username: username.trim(), email: email ? email.trim().toLowerCase() : `${username}@example.com`, password });
   writeUsers(users);
   return res.json({ success: true, message: 'Tạo tài khoản thành công' });
 });
 
-app.post('/api/forgot', (req, res) => {
-  const { username, newPassword } = req.body;
-  if(!username || !newPassword) return res.status(400).json({ error: 'Thiếu thông tin' });
+// Quên mật khẩu: bước 1 gửi OTP theo username hoặc email
+app.post('/api/forgot/send-otp', (req, res) => {
+  const { identifier } = req.body; // username hoặc email
+  if(!identifier) return res.status(400).json({ error: 'Thiếu tài khoản hoặc email' });
+  const user = findUserByIdentifier(identifier);
+  if(!user) return res.status(404).json({ error: 'Tài khoản / email không tồn tại' });
+  const key = `forgot:${user.username.toLowerCase()}`;
+  const otp = setOTP(key, { username: user.username });
+  return res.json({ success: true, message: `OTP đã gửi đến email ${user.email} (demo)`, otp, demoHint: `Demo: OTP là ${otp}`, email: user.email });
+});
+// Quên mật khẩu: bước 2 xác thực OTP + đặt mật khẩu mới
+app.post('/api/forgot/verify', (req, res) => {
+  const { identifier, otp, newPassword } = req.body;
+  if(!identifier || !otp || !newPassword) return res.status(400).json({ error: 'Thiếu thông tin' });
   if(newPassword.length < 3) return res.status(400).json({ error: 'Mật khẩu mới tối thiểu 3 ký tự' });
+  const user = findUserByIdentifier(identifier);
+  if(!user) return res.status(404).json({ error: 'Tài khoản không tồn tại' });
+  const key = `forgot:${user.username.toLowerCase()}`;
+  const v = verifyOTP(key, otp);
+  if(!v.ok) return res.status(400).json({ error: v.error });
   const users = readUsers();
-  const u = users.find(x=> x.username === username);
-  if(!u) return res.status(404).json({ error: 'Tài khoản không tồn tại' });
+  const u = users.find(x=> x.username.toLowerCase()===user.username.toLowerCase());
   u.password = newPassword;
   writeUsers(users);
-  // xóa session cũ của user này
-  for(const [tok, sess] of sessions) if(sess.user === username) sessions.delete(tok);
+  for(const [tok, sess] of sessions) if(sess.user.toLowerCase()===user.username.toLowerCase()) sessions.delete(tok);
+  return res.json({ success: true, message: 'Đặt lại mật khẩu thành công! Hãy đăng nhập' });
+});
+// Giữ endpoint cũ /api/forgot cho tương thích
+app.post('/api/forgot', (req, res) => {
+  const { username, newPassword, identifier } = req.body;
+  const id = identifier || username;
+  if(!id || !newPassword) return res.status(400).json({ error: 'Thiếu thông tin' });
+  if(newPassword.length < 3) return res.status(400).json({ error: 'Mật khẩu mới tối thiểu 3 ký tự' });
+  const users = readUsers();
+  const u = findUserByIdentifier(id);
+  if(!u) return res.status(404).json({ error: 'Tài khoản không tồn tại' });
+  const target = users.find(x=> x.username.toLowerCase()===u.username.toLowerCase());
+  target.password = newPassword;
+  writeUsers(users);
+  for(const [tok, sess] of sessions) if(sess.user.toLowerCase()===u.username.toLowerCase()) sessions.delete(tok);
   return res.json({ success: true, message: 'Đặt lại mật khẩu thành công' });
 });
 
 app.post('/api/login', (req, res) => {
-  const { username, password } = req.body;
-  const user = findUser(username);
-  // tương thích với ADMIN_USER env nếu chưa có trong file
-  const valid = user ? (user.password === password) : (username === ADMIN_USER && password === ADMIN_PASS);
+  const { username, password } = req.body; // username có thể là email
+  const identifier = (username||'').trim();
+  const user = findUserByIdentifier(identifier) || findUser(identifier);
+  const valid = user ? (user.password === password) : (identifier === ADMIN_USER && password === ADMIN_PASS) || (identifier.toLowerCase() === `${ADMIN_USER}@example.com` && password === ADMIN_PASS);
+  const loginName = user ? user.username : identifier;
   if(valid){
-    // nếu user env chưa lưu thì lưu vào file
-    if(!user && username === ADMIN_USER){
+    if(!user && identifier === ADMIN_USER){
       const users = readUsers();
-      if(!users.find(u=> u.username===username)) { users.push({ username, password }); writeUsers(users); }
+      if(!users.find(u=> u.username===identifier)) { users.push({ username: identifier, email: `${identifier}@example.com`, password }); writeUsers(users); }
     }
     const token = crypto.randomBytes(24).toString('hex');
-    sessions.set(token, { user: username, created: Date.now() });
+    sessions.set(token, { user: loginName, created: Date.now() });
     res.setHeader('Set-Cookie', `token=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${7*24*3600}`);
-    return res.json({ success: true, token, user: username });
+    return res.json({ success: true, token, user: loginName });
   }
   return res.status(401).json({ error: 'Sai tài khoản hoặc mật khẩu' });
 });

@@ -18,9 +18,6 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .title{text-align:center}
 .title h2{font-size:18px;margin-bottom:4px}
 .title p{font-size:13px;color:var(--muted)}
-.tabs{display:flex;background:#0f1115;border:1px solid var(--border);border-radius:10px;padding:4px;gap:4px}
-.tab{flex:1;padding:8px;border-radius:8px;border:none;background:transparent;color:var(--muted);font-weight:600;font-size:13px;cursor:pointer;transition:.15s}
-.tab.active{background:var(--card);color:var(--text);border:1px solid var(--border)}
 .field{display:flex;flex-direction:column;gap:6px}
 .label{font-size:13px;font-weight:600;color:var(--muted)}
 .field input{height:44px;background:#0f1115;border:1px solid var(--border);color:var(--text);padding:0 14px;border-radius:10px;font-size:14px;outline:none;transition:border-color .15s}
@@ -29,10 +26,12 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .btn:hover{background:var(--primary-hover)}
 .btn:disabled{opacity:.6;cursor:not-allowed}
 .btn.ghost{background:transparent;border-color:var(--border);color:var(--text)}
+.btn.small{height:38px;font-size:13px}
 .msg{padding:10px 12px;border-radius:10px;font-size:13px;display:none;line-height:1.4}
 .msg.show{display:block}
 .msg.error{background:rgba(255,107,107,.12);border:1px solid rgba(255,107,107,.25);color:#ff9a9a}
 .msg.success{background:rgba(52,168,83,.12);border:1px solid rgba(52,168,83,.25);color:#7ee8a0}
+.msg.info{background:rgba(91,108,255,.12);border:1px solid rgba(91,108,255,.25);color:#a5b4fc}
 .hint{font-size:12px;color:var(--muted);text-align:center;background:#0f1115;border:1px dashed var(--border);padding:10px;border-radius:10px}
 .hint code{background:#1e2230;padding:2px 6px;border-radius:6px;font-size:12px;color:#c7d2fe}
 .links{display:flex;justify-content:space-between;font-size:13px}
@@ -40,6 +39,8 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
 .links button:hover{text-decoration:underline}
 .form{display:flex;flex-direction:column;gap:14px}
 .hidden{display:none !important}
+.otp-row{display:flex;gap:8px;align-items:center}
+.otp-row input{flex:1;letter-spacing:.15em;text-align:center;font-weight:700;font-size:16px}
 </style>
 </head>
 <body>
@@ -56,13 +57,13 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
     <form class="form" id="form-login">
       <div class="title">
         <h2>Đăng nhập</h2>
-        <p>Nhập tài khoản để tiếp tục</p>
+        <p>Nhập tài khoản hoặc email để tiếp tục</p>
       </div>
       <div id="error-login" class="msg error"></div>
       <div id="success-login" class="msg success"></div>
       <div class="field">
-        <span class="label">Tài khoản</span>
-        <input id="username" type="text" placeholder="admin" required autocomplete="username">
+        <span class="label">Tài khoản hoặc Email</span>
+        <input id="username" type="text" placeholder="admin hoặc admin@example.com" required autocomplete="username">
       </div>
       <div class="field">
         <span class="label">Mật khẩu</span>
@@ -70,170 +71,233 @@ body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t
       </div>
       <button type="submit" class="btn" id="btn-login">Đăng nhập</button>
       <div class="links">
-        <button type="button" data-goto="register">Chưa có tài khoản? Tạo ngay</button>
+        <button type="button" data-goto="register">Chưa có tài khoản? Đăng ký</button>
         <button type="button" data-goto="forgot">Quên mật khẩu?</button>
       </div>
     </form>
 
-    <!-- REGISTER -->
+    <!-- REGISTER - đăng ký với email + OTP -->
     <form class="form hidden" id="form-register">
       <div class="title">
-        <h2>Tạo tài khoản</h2>
-        <p>Tạo tài khoản mới để sử dụng FileHub</p>
+        <h2>Đăng ký với Email</h2>
+        <p>Tạo tài khoản mới — cần xác thực OTP qua email</p>
       </div>
       <div id="error-register" class="msg error"></div>
       <div id="success-register" class="msg success"></div>
+      <div id="info-register" class="msg info"></div>
       <div class="field">
-        <span class="label">Tài khoản mới</span>
-        <input id="reg-user" type="text" placeholder="vd: myaccount" required minlength="3">
+        <span class="label">Tài khoản</span>
+        <input id="reg-user" type="text" placeholder="vd: myaccount" required minlength="3" autocomplete="username">
+      </div>
+      <div class="field">
+        <span class="label">Email</span>
+        <input id="reg-email" type="email" placeholder="vd: you@example.com" required autocomplete="email">
       </div>
       <div class="field">
         <span class="label">Mật khẩu</span>
-        <input id="reg-pass" type="password" placeholder="tối thiểu 3 ký tự" required minlength="3">
+        <input id="reg-pass" type="password" placeholder="tối thiểu 3 ký tự" required minlength="3" autocomplete="new-password">
       </div>
       <div class="field">
         <span class="label">Nhập lại mật khẩu</span>
-        <input id="reg-pass2" type="password" placeholder="nhập lại mật khẩu" required>
+        <input id="reg-pass2" type="password" placeholder="nhập lại mật khẩu" required autocomplete="new-password">
       </div>
-      <button type="submit" class="btn" id="btn-register">Tạo tài khoản</button>
+      <div class="field hidden" id="reg-otp-group">
+        <span class="label">Mã OTP (6 số gửi đến email)</span>
+        <div class="otp-row">
+          <input id="reg-otp" placeholder="123456" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+          <span id="reg-otp-countdown" style="font-size:12px;color:var(--muted);min-width:60px;text-align:right"></span>
+        </div>
+        <span id="reg-otp-hint" style="font-size:12px;color:#a5b4fc"></span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn ghost" id="btn-reg-send-otp" style="flex:1">Gửi OTP</button>
+        <button type="submit" class="btn" id="btn-register" style="flex:1" disabled>Tạo tài khoản</button>
+      </div>
       <div class="links" style="justify-content:center">
         <button type="button" data-goto="login">Đã có tài khoản? Đăng nhập</button>
       </div>
     </form>
 
-    <!-- FORGOT -->
+    <!-- FORGOT - nhập username hoặc email để lấy OTP -->
     <form class="form hidden" id="form-forgot">
       <div class="title">
         <h2>Quên mật khẩu</h2>
-        <p>Nhập tài khoản và mật khẩu mới để đặt lại</p>
+        <p>Nhập <b>username hoặc email</b> để nhận OTP</p>
       </div>
       <div id="error-forgot" class="msg error"></div>
       <div id="success-forgot" class="msg success"></div>
+      <div id="info-forgot" class="msg info"></div>
       <div class="field">
-        <span class="label">Tài khoản</span>
-        <input id="forgot-user" type="text" placeholder="tài khoản của bạn" required>
+        <span class="label">Tài khoản hoặc Email</span>
+        <input id="forgot-identifier" type="text" placeholder="admin hoặc admin@example.com" required>
       </div>
-      <div class="field">
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn ghost" id="btn-forgot-send-otp" style="flex:1">Gửi OTP</button>
+        <span id="forgot-otp-countdown" style="font-size:12px;color:var(--muted);align-self:center;min-width:60px"></span>
+      </div>
+      <div class="field hidden" id="forgot-otp-group">
+        <span class="label">Mã OTP</span>
+        <input id="forgot-otp" placeholder="6 chữ số" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+        <span id="forgot-otp-hint" style="font-size:12px;color:#a5b4fc"></span>
+      </div>
+      <div class="field hidden" id="forgot-pass-group">
         <span class="label">Mật khẩu mới</span>
-        <input id="forgot-pass" type="password" placeholder="mật khẩu mới" required minlength="3">
+        <input id="forgot-pass" type="password" placeholder="mật khẩu mới" minlength="3" autocomplete="new-password">
       </div>
-      <div class="field">
+      <div class="field hidden" id="forgot-pass2-group">
         <span class="label">Nhập lại mật khẩu mới</span>
-        <input id="forgot-pass2" type="password" placeholder="nhập lại" required>
+        <input id="forgot-pass2" type="password" placeholder="nhập lại" autocomplete="new-password">
       </div>
-      <button type="submit" class="btn" id="btn-forgot">Đặt lại mật khẩu</button>
+      <button type="submit" class="btn hidden" id="btn-forgot-verify">Đặt lại mật khẩu</button>
       <div class="links" style="justify-content:center">
         <button type="button" data-goto="login">Quay lại đăng nhập</button>
       </div>
     </form>
 
     <div class="hint" id="login-hint" data-dev-only>
-      Mặc định: <code>admin / admin123</code><br>
-      Tài khoản tạo mới lưu ở <code>users.json</code> trên server
+      Mặc định: <code>admin / admin123</code> — <code>admin@example.com</code><br>
+      Demo OTP sẽ hiện ngay trên màn hình (khi deploy thật sẽ gửi qua email)
     </div>
   </div>
 
 <script>
-const tabs = document.querySelectorAll('.tab');
 const forms = { login: document.getElementById('form-login'), register: document.getElementById('form-register'), forgot: document.getElementById('form-forgot') };
-
 function switchTab(name){
-  tabs.forEach(t=> t.classList.toggle('active', t.dataset.tab===name));
   Object.entries(forms).forEach(([k,f])=> f.classList.toggle('hidden', k!==name));
   document.querySelectorAll('.msg').forEach(m=> m.classList.remove('show'));
 }
-tabs.forEach(t=> t.addEventListener('click', ()=> switchTab(t.dataset.tab)));
 document.querySelectorAll('[data-goto]').forEach(b=> b.addEventListener('click', ()=> switchTab(b.dataset.goto)));
 
-// Tự ẩn hint khi deploy lên server (không phải localhost) - phần khoanh đỏ sẽ biến mất khi deploy
+// Tự ẩn hint khi deploy
 (function(){
   const hint = document.getElementById('login-hint');
   const isLocal = ['localhost','127.0.0.1',''].includes(location.hostname);
   const isDev = isLocal || location.hostname.startsWith('192.168.') || location.hostname.startsWith('10.');
-  // Nếu deploy (NODE_ENV=production) server có thể set window.__HIDE_HINT, ưu tiên ẩn
-  if(!isDev || window.__HIDE_HINT){
-    if(hint) hint.style.display='none';
-  }
-  // Cho phép ép ẩn bằng ?nohint hoặc env
-  if(location.search.includes('nohint') || localStorage.getItem('hideLoginHint')==='1'){
-    if(hint) hint.style.display='none';
-  }
+  if(!isDev || window.__HIDE_HINT){ if(hint) hint.style.display='none'; }
+  if(location.search.includes('nohint') || localStorage.getItem('hideLoginHint')==='1'){ if(hint) hint.style.display='none'; }
 })();
 
 async function checkAlready(){
-  try{
-    const r = await fetch('/api/me', { credentials:'include' });
-    if(r.ok){ location.href = '/'; }
-  }catch{}
+  try{ const r = await fetch('/api/me', { credentials:'include' }); if(r.ok) location.href='/'; }catch{}
 }
 checkAlready();
 
-// LOGIN
+// LOGIN - hỗ trợ cả username và email
 document.getElementById('form-login').addEventListener('submit', async (e)=>{
   e.preventDefault();
-  const err = document.getElementById('error-login');
-  const ok = document.getElementById('success-login');
-  const btn = document.getElementById('btn-login');
-  err.classList.remove('show'); ok.classList.remove('show');
-  btn.disabled=true; btn.textContent='Đang đăng nhập...';
-  const username = document.getElementById('username').value.trim();
-  const password = document.getElementById('password').value;
+  const err=document.getElementById('error-login'), ok=document.getElementById('success-login'), btn=document.getElementById('btn-login');
+  err.classList.remove('show'); ok.classList.remove('show'); btn.disabled=true; btn.textContent='Đang đăng nhập...';
+  const username=document.getElementById('username').value.trim(), password=document.getElementById('password').value;
   try{
-    const r = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include', body: JSON.stringify({ username, password }) });
-    const data = await r.json();
-    if(!r.ok) throw new Error(data.error);
-    if(data.token) localStorage.setItem('fh_token', data.token);
-    localStorage.setItem('fh_user', data.user);
-    ok.textContent='Đăng nhập thành công! Đang chuyển...'; ok.classList.add('show');
-    setTimeout(()=> location.href='/', 500);
-  }catch(ex){
-    err.textContent = ex.message; err.classList.add('show');
-  }finally{ btn.disabled=false; btn.textContent='Đăng nhập'; }
+    const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({username,password})});
+    const data=await r.json(); if(!r.ok) throw new Error(data.error);
+    if(data.token) localStorage.setItem('fh_token',data.token); localStorage.setItem('fh_user',data.user);
+    ok.textContent='Đăng nhập thành công! Đang chuyển...'; ok.classList.add('show'); setTimeout(()=>location.href='/',500);
+  }catch(ex){ err.textContent=ex.message; err.classList.add('show'); }finally{ btn.disabled=false; btn.textContent='Đăng nhập'; }
 });
 
-// REGISTER
-document.getElementById('form-register').addEventListener('submit', async (e)=>{
-  e.preventDefault();
-  const err = document.getElementById('error-register');
-  const ok = document.getElementById('success-register');
-  const btn = document.getElementById('btn-register');
-  err.classList.remove('show'); ok.classList.remove('show');
-  const u = document.getElementById('reg-user').value.trim();
-  const p = document.getElementById('reg-pass').value;
-  const p2 = document.getElementById('reg-pass2').value;
-  if(p!==p2){ err.textContent='Mật khẩu nhập lại không khớp'; err.classList.add('show'); return; }
-  btn.disabled=true; btn.textContent='Đang tạo...';
-  try{
-    const r = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username:u, password:p }) });
-    const data = await r.json();
-    if(!r.ok) throw new Error(data.error);
-    ok.textContent='Tạo tài khoản thành công! Hãy đăng nhập.'; ok.classList.add('show');
-    setTimeout(()=> switchTab('login'), 1200);
-  }catch(ex){ err.textContent=ex.message; err.classList.add('show'); }
-  finally{ btn.disabled=false; btn.textContent='Tạo tài khoản'; }
-});
+// REGISTER với email + OTP
+(function(){
+  const btnSend=document.getElementById('btn-reg-send-otp');
+  const btnCreate=document.getElementById('btn-register');
+  const otpGroup=document.getElementById('reg-otp-group');
+  const hint=document.getElementById('reg-otp-hint');
+  const info=document.getElementById('info-register');
+  const err=document.getElementById('error-register');
+  const ok=document.getElementById('success-register');
+  const countdownEl=document.getElementById('reg-otp-countdown');
+  let countdownTimer=null;
+  function startCountdown(el, btn){
+    let s=60; btn.disabled=true;
+    countdownTimer=setInterval(()=>{
+      s--; el.textContent=s>0?`Gửi lại ${s}s`:'';
+      if(s<=0){ clearInterval(countdownTimer); btn.disabled=false; el.textContent=''; }
+    },1000);
+  }
+  btnSend.addEventListener('click', async ()=>{
+    err.classList.remove('show'); ok.classList.remove('show'); info.classList.remove('show');
+    const username=document.getElementById('reg-user').value.trim();
+    const email=document.getElementById('reg-email').value.trim();
+    const pass=document.getElementById('reg-pass').value;
+    const pass2=document.getElementById('reg-pass2').value;
+    if(!username||!email||!pass){ err.textContent='Điền đủ tài khoản, email, mật khẩu'; err.classList.add('show'); return; }
+    if(pass!==pass2){ err.textContent='Mật khẩu nhập lại không khớp'; err.classList.add('show'); return; }
+    btnSend.disabled=true; btnSend.textContent='Đang gửi...';
+    try{
+      const r=await fetch('/api/register/send-otp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,email,password:pass})});
+      const d=await r.json(); if(!r.ok) throw new Error(d.error);
+      otpGroup.classList.remove('hidden'); btnCreate.disabled=false;
+      info.textContent=d.demoHint||`OTP đã gửi đến ${email}`; info.classList.add('show');
+      if(d.otp){ hint.textContent=`Demo: OTP là ${d.otp} (5 phút)`; document.getElementById('reg-otp').value=d.otp; }
+      startCountdown(countdownEl, btnSend); btnSend.textContent='Gửi lại OTP';
+    }catch(ex){ err.textContent=ex.message; err.classList.add('show'); btnSend.disabled=false; btnSend.textContent='Gửi OTP'; }
+  });
+  document.getElementById('form-register').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    err.classList.remove('show'); ok.classList.remove('show');
+    const email=document.getElementById('reg-email').value.trim();
+    const otp=document.getElementById('reg-otp').value.trim();
+    if(!otp){ err.textContent='Nhập mã OTP đã gửi đến email'; err.classList.add('show'); return; }
+    btnCreate.disabled=true; btnCreate.textContent='Đang xác thực...';
+    try{
+      const r=await fetch('/api/register/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,otp})});
+      const d=await r.json(); if(!r.ok) throw new Error(d.error);
+      ok.textContent=d.message||'Tạo tài khoản thành công!'; ok.classList.add('show');
+      setTimeout(()=>switchTab('login'),1500);
+    }catch(ex){ err.textContent=ex.message; err.classList.add('show'); }
+    finally{ btnCreate.disabled=false; btnCreate.textContent='Tạo tài khoản'; }
+  });
+})();
 
-// FORGOT
-document.getElementById('form-forgot').addEventListener('submit', async (e)=>{
-  e.preventDefault();
-  const err = document.getElementById('error-forgot');
-  const ok = document.getElementById('success-forgot');
-  const btn = document.getElementById('btn-forgot');
-  err.classList.remove('show'); ok.classList.remove('show');
-  const u = document.getElementById('forgot-user').value.trim();
-  const p = document.getElementById('forgot-pass').value;
-  const p2 = document.getElementById('forgot-pass2').value;
-  if(p!==p2){ err.textContent='Mật khẩu nhập lại không khớp'; err.classList.add('show'); return; }
-  btn.disabled=true; btn.textContent='Đang xử lý...';
-  try{
-    const r = await fetch('/api/forgot', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ username:u, newPassword:p }) });
-    const data = await r.json();
-    if(!r.ok) throw new Error(data.error);
-    ok.textContent='Đặt lại mật khẩu thành công! Hãy đăng nhập với mật khẩu mới.'; ok.classList.add('show');
-    setTimeout(()=> switchTab('login'), 1500);
-  }catch(ex){ err.textContent=ex.message; err.classList.add('show'); }
-  finally{ btn.disabled=false; btn.textContent='Đặt lại mật khẩu'; }
-});
+// FORGOT với username hoặc email + OTP
+(function(){
+  const btnSend=document.getElementById('btn-forgot-send-otp');
+  const btnVerify=document.getElementById('btn-forgot-verify');
+  const otpGroup=document.getElementById('forgot-otp-group');
+  const passGroup=document.getElementById('forgot-pass-group');
+  const pass2Group=document.getElementById('forgot-pass2-group');
+  const hint=document.getElementById('forgot-otp-hint');
+  const info=document.getElementById('info-forgot');
+  const err=document.getElementById('error-forgot');
+  const ok=document.getElementById('success-forgot');
+  const countdownEl=document.getElementById('forgot-otp-countdown');
+  let timer=null;
+  function countdown(){
+    let s=60; btnSend.disabled=true;
+    timer=setInterval(()=>{ s--; countdownEl.textContent=s>0?`Gửi lại ${s}s`:''; if(s<=0){clearInterval(timer); btnSend.disabled=false; countdownEl.textContent='';}},1000);
+  }
+  btnSend.addEventListener('click', async ()=>{
+    err.classList.remove('show'); ok.classList.remove('show'); info.classList.remove('show');
+    const identifier=document.getElementById('forgot-identifier').value.trim();
+    if(!identifier){ err.textContent='Nhập tài khoản hoặc email'; err.classList.add('show'); return; }
+    btnSend.disabled=true; btnSend.textContent='Đang gửi...';
+    try{
+      const r=await fetch('/api/forgot/send-otp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier})});
+      const d=await r.json(); if(!r.ok) throw new Error(d.error);
+      otpGroup.classList.remove('hidden'); passGroup.classList.remove('hidden'); pass2Group.classList.remove('hidden'); btnVerify.classList.remove('hidden');
+      info.textContent=d.demoHint||`OTP đã gửi đến ${d.email}`; info.classList.add('show');
+      if(d.otp){ hint.textContent=`Demo: OTP là ${d.otp}`; document.getElementById('forgot-otp').value=d.otp; }
+      countdown(); btnSend.textContent='Gửi lại OTP';
+    }catch(ex){ err.textContent=ex.message; err.classList.add('show'); btnSend.disabled=false; btnSend.textContent='Gửi OTP'; }
+  });
+  document.getElementById('form-forgot').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    err.classList.remove('show'); ok.classList.remove('show');
+    const identifier=document.getElementById('forgot-identifier').value.trim();
+    const otp=document.getElementById('forgot-otp').value.trim();
+    const p=document.getElementById('forgot-pass').value;
+    const p2=document.getElementById('forgot-pass2').value;
+    if(!otp){ err.textContent='Nhập OTP'; err.classList.add('show'); return; }
+    if(p!==p2){ err.textContent='Mật khẩu nhập lại không khớp'; err.classList.add('show'); return; }
+    btnVerify.disabled=true; btnVerify.textContent='Đang xử lý...';
+    try{
+      const r=await fetch('/api/forgot/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier,otp,newPassword:p})});
+      const d=await r.json(); if(!r.ok) throw new Error(d.error);
+      ok.textContent=d.message; ok.classList.add('show'); setTimeout(()=>switchTab('login'),1500);
+    }catch(ex){ err.textContent=ex.message; err.classList.add('show'); }
+    finally{ btnVerify.disabled=false; btnVerify.textContent='Đặt lại mật khẩu'; }
+  });
+})();
 </script>
 </body>
 </html>
